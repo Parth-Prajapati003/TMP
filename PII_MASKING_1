@@ -1,0 +1,132 @@
+// HOW TO ADD THOSE CODES
+
+Create the MaskingUtils class:
+
+Create a new Java class called MaskingUtils.
+Place this class in the appropriate package within the src/main/java directory of your project.
+Create the MaskingSerializer class:
+
+Create a new Java class called MaskingSerializer.
+Place this class in the appropriate package within the src/main/java directory of your project.
+Create the PropertyFilterMixIn class:
+
+Create a new Java class called PropertyFilterMixIn.
+Place this class in the appropriate package within the src/main/java directory of your project.
+Configure the ObjectMapper:
+
+Create a new Java class called JacksonConfiguration.
+Annotate this class with @Configuration.
+Place this class in the appropriate package within the src/main/java directory of your project.
+Apply Masking Logic in Controller or Service:
+
+Locate the appropriate controller or service class where you want to apply the PII masking logic.
+Modify the method within that class to include the code discussed earlier, such as the getUser method in the UserController class.
+Remember to adjust the package names and directory structure to match your project's package naming conventions.
+
+
+// CODE 1
+
+public class MaskingUtils {
+    private static final String MASKING_CHARACTER = "*";
+
+    public static String maskField(String fieldValue) {
+        if (fieldValue == null || fieldValue.isEmpty()) {
+            return fieldValue;
+        }
+        
+        int charactersToMask = (int) (fieldValue.length() * 0.75); // Mask 75% of the characters
+        
+        StringBuilder maskedValue = new StringBuilder(fieldValue);
+        int startIndex = (int) (fieldValue.length() * 0.25); // Start masking from 25% of the field
+        
+        for (int i = startIndex; i < startIndex + charactersToMask; i++) {
+            maskedValue.setCharAt(i, MASKING_CHARACTER.charAt(0));
+        }
+        
+        return maskedValue.toString();
+    }
+}
+
+
+//CODE 2 
+
+@RestController
+public class UserController {
+    @GetMapping("/users/{id}")
+    public User getUser(@PathVariable Long id, @RequestParam(defaultValue = "false") boolean showFullData) {
+        User user = userService.getUserById(id);
+        
+        if (!showFullData) {
+            // Mask PII fields
+            user.setName(MaskingUtils.maskField(user.getName()));
+            user.setEmail(MaskingUtils.maskField(user.getEmail()));
+            user.setPhoneNumber(MaskingUtils.maskField(user.getPhoneNumber()));
+        }
+        
+        return user;
+    }
+}
+
+//code 3
+
+public class MaskingSerializer extends StdSerializer<Object> {
+    private final ObjectMapper objectMapper;
+
+    public MaskingSerializer() {
+        this(null);
+    }
+
+    public MaskingSerializer(Class<Object> t) {
+        super(t);
+        this.objectMapper = new ObjectMapper();
+    }
+
+    @Override
+    public void serialize(Object value, JsonGenerator gen, SerializerProvider provider) throws IOException {
+        objectMapper.addMixIn(value.getClass(), PropertyFilterMixIn.class);
+        FilterProvider filters = new SimpleFilterProvider().addFilter("maskingFilter", SimpleBeanPropertyFilter.serializeAllExcept(getMaskedFields()));
+        objectMapper.setFilterProvider(filters);
+        objectMapper.writeValue(gen, value);
+    }
+
+    private Set<String> getMaskedFields() {
+        // Return a set of field names to mask
+        // For example: return Set.of("name", "email", "phoneNumber");
+        return Set.of("name", "email", "phoneNumber");
+    }
+}
+
+
+//code 4
+
+public abstract class PropertyFilterMixIn {
+    @JsonFilter("maskingFilter")
+    abstract String getName();
+
+    @JsonFilter("maskingFilter")
+    abstract String getEmail();
+
+    @JsonFilter("maskingFilter")
+    abstract String getPhoneNumber();
+}
+
+
+//code 5
+
+@Configuration
+public class JacksonConfiguration {
+
+    @Bean
+    public ObjectMapper objectMapper() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.addMixIn(Object.class, PropertyFilterMixIn.class);
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(Object.class, new MaskingSerializer());
+        objectMapper.registerModule(module);
+        return objectMapper;
+    }
+}
+
+
+
+
